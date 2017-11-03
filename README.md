@@ -1,2 +1,2 @@
-# CG_program3
-Texture and transparency 
+# prog3
+helper files for the intro cg class's third programming assignment

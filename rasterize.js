@@ -37,7 +37,7 @@ var diffuseULoc; // where to put diffuse reflecivity for fragment shader
 var specularULoc; // where to put specular reflecivity for fragment shader
 var shininessULoc; // where to put specular exponent for fragment shader
 
-var samplerUniform
+var samplerUniform;
 //texture
 var uvTextureLoc; //position to put uv coordinates
 
@@ -279,19 +279,19 @@ function setupWebGL() {
 } // end setupWebGL
 
 //initialize texture
-var myTexture;
-function loadTexture(textureLocation)
+var myTexture = [];
+function loadTexture(textureLocation, triangleSet)
 {
-    myTexture = gl.createTexture();
-    myTexture.image = new Image();
-    myTexture.image.crossOrigin = "Anonymous";
-    myTexture.image.onload = function()
+    myTexture[triangleSet] = gl.createTexture();
+    myTexture[triangleSet].image = new Image();
+    myTexture[triangleSet].image.crossOrigin = "Anonymous";
+    myTexture[triangleSet].image.onload = function()
     {
-        handleTexture(myTexture);
+        handleTexture(myTexture[triangleSet]);
     }
-    console.log("textureLocation: " + textureLocation);
-    myTexture.image.src = "https://ncsucgclass.github.io/prog3/"+textureLocation;
-    console.log("myTexture.image.src: " + myTexture.image.src);
+    console.log("textureLocation: " + textureLocation[triangleSet]);
+    myTexture[triangleSet].image.src = "https://ncsucgclass.github.io/prog3/"+textureLocation;
+    console.log("myTexture.image.src: " + myTexture[triangleSet].image.src);
 }
 
 
@@ -420,7 +420,7 @@ function loadModels() {
                 inputTriangles[whichSet].yAxis = vec3.fromValues(0,1,0); // model Y axis 
 
                 //load texture
-                loadTexture(inputTriangles[whichSet].material.texture);
+                loadTexture(inputTriangles[whichSet].material.texture, whichSet);
 
                 // set up the vertex and normal arrays, define model center and axes
                 //also set UVs for texture
@@ -759,7 +759,7 @@ function renderModels() {
         gl.vertexAttribPointer(uvTextureLoc,2,gl.FLOAT,false,0,0); //feed
 
         gl.activeTexture(gl.TEXTURE0);
-        gl.bindTexture(gl.TEXTURE_2D, myTexture);
+        gl.bindTexture(gl.TEXTURE_2D, myTexture[whichTriSet]);
         gl.uniform1i(samplerUniform, 0);
 
 

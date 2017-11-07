@@ -24,6 +24,10 @@ var normalBuffers = []; // this contains normal component lists by set, in tripl
 var triSetSizes = []; // this contains the size of each triangle set
 var triangleBuffers = []; // lists of indices into vertexBuffers by set, in triples
 
+//texture buffers
+var textureBuffers = []; //this contains uvs by set
+
+
 /* shader parameter locations */
 var vPosAttribLoc; // where to put position for vertex shader
 var mMatrixULoc; // where to put model matrix for vertex shader
@@ -32,6 +36,10 @@ var ambientULoc; // where to put ambient reflecivity for fragment shader
 var diffuseULoc; // where to put diffuse reflecivity for fragment shader
 var specularULoc; // where to put specular reflecivity for fragment shader
 var shininessULoc; // where to put specular exponent for fragment shader
+
+var samplerUniform
+//texture
+var uvTextureLoc; //position to put uv coordinates
 
 /* interaction variables */
 var Eye = vec3.clone(defaultEye); // eye position in world space
@@ -270,6 +278,39 @@ function setupWebGL() {
      } // end catch
 } // end setupWebGL
 
+//initialize texture
+var myTexture;
+function loadTexture(textureLocation)
+{
+    myTexture = gl.createTexture();
+    myTexture.image = new Image();
+    myTexture.image.crossOrigin = "Anonymous";
+    myTexture.image.onload = function()
+    {
+        handleTexture(myTexture);
+    }
+    console.log("textureLocation: " + textureLocation);
+    myTexture.image.src = "https://ncsucgclass.github.io/prog3/"+textureLocation;
+    console.log("myTexture.image.src: " + myTexture.image.src);
+}
+
+
+//function to handle loaded texture
+function handleTexture(textureVal)
+{
+    gl.bindTexture(gl.TEXTURE_2D, textureVal);
+    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, textureVal.image);
+
+    //whichmag filter to use
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+
+    //which min filter to use
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+
+    gl.bindTexture(gl.TEXTURE_2D, null);
+}
+
 // read models in, load them into webgl buffers
 function loadModels() {
 
@@ -378,15 +419,26 @@ function loadModels() {
                 inputTriangles[whichSet].xAxis = vec3.fromValues(1,0,0); // model X axis
                 inputTriangles[whichSet].yAxis = vec3.fromValues(0,1,0); // model Y axis 
 
+                //load texture
+                loadTexture(inputTriangles[whichSet].material.texture);
+
                 // set up the vertex and normal arrays, define model center and axes
+                //also set UVs for texture
+                inputTriangles[whichSet].glTextureUVs = []; //Texture UV coordinates
+
                 inputTriangles[whichSet].glVertices = []; // flat coord list for webgl
                 inputTriangles[whichSet].glNormals = []; // flat normal list for webgl
                 var numVerts = inputTriangles[whichSet].vertices.length; // num vertices in tri set
                 for (whichSetVert=0; whichSetVert<numVerts; whichSetVert++) { // verts in set
                     vtxToAdd = inputTriangles[whichSet].vertices[whichSetVert]; // get vertex to add
                     normToAdd = inputTriangles[whichSet].normals[whichSetVert]; // get normal to add
+
+                    uvToAdd = inputTriangles[whichSet].uvs[whichSetVert]; //get uvs to add
+
                     inputTriangles[whichSet].glVertices.push(vtxToAdd[0],vtxToAdd[1],vtxToAdd[2]); // put coords in set coord list
                     inputTriangles[whichSet].glNormals.push(normToAdd[0],normToAdd[1],normToAdd[2]); // put normal in set coord list
+                    inputTriangles[whichSet].glTextureUVs.push(uvToAdd[0], uvToAdd[1]); //put uv in UV texture coordinate list
+
                     vec3.max(maxCorner,maxCorner,vtxToAdd); // update world bounding box corner maxima
                     vec3.min(minCorner,minCorner,vtxToAdd); // update world bounding box corner minima
                     vec3.add(inputTriangles[whichSet].center,inputTriangles[whichSet].center,vtxToAdd); // add to ctr sum
@@ -397,10 +449,17 @@ function loadModels() {
                 vertexBuffers[whichSet] = gl.createBuffer(); // init empty webgl set vertex coord buffer
                 gl.bindBuffer(gl.ARRAY_BUFFER,vertexBuffers[whichSet]); // activate that buffer
                 gl.bufferData(gl.ARRAY_BUFFER,new Float32Array(inputTriangles[whichSet].glVertices),gl.STATIC_DRAW); // data in
+               
                 normalBuffers[whichSet] = gl.createBuffer(); // init empty webgl set normal component buffer
                 gl.bindBuffer(gl.ARRAY_BUFFER,normalBuffers[whichSet]); // activate that buffer
                 gl.bufferData(gl.ARRAY_BUFFER,new Float32Array(inputTriangles[whichSet].glNormals),gl.STATIC_DRAW); // data in
                
+                //send UV coords to webGL
+                textureBuffers[whichSet] = gl.createBuffer(); //texture coordinate buffer
+                gl.bindBuffer(gl.ARRAY_BUFFER, textureBuffers[whichSet]);
+                gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(inputTriangles[whichSet].glTextureUVs), gl.STATIC_DRAW);
+
+
                 // set up the triangle index array, adjusting indices across sets
                 inputTriangles[whichSet].glTriangles = []; // flat index list for webgl
                 triSetSizes[whichSet] = inputTriangles[whichSet].triangles.length; // number of tris in this set
@@ -479,11 +538,15 @@ function setupShaders() {
         attribute vec3 aVertexPosition; // vertex position
         attribute vec3 aVertexNormal; // vertex normal
         
+        attribute vec2 uvPosition; //Texture UV coords
+
         uniform mat4 umMatrix; // the model matrix
         uniform mat4 upvmMatrix; // the project view model matrix
         
         varying vec3 vWorldPos; // interpolated world position of vertex
         varying vec3 vVertexNormal; // interpolated normal for frag shader
+
+        varying vec2 varyingUVPosition; //varying UV position
 
         void main(void) {
             
@@ -495,6 +558,7 @@ function setupShaders() {
             // vertex normal (assume no non-uniform scale)
             vec4 vWorldNormal4 = umMatrix * vec4(aVertexNormal, 0.0);
             vVertexNormal = normalize(vec3(vWorldNormal4.x,vWorldNormal4.y,vWorldNormal4.z)); 
+            varyingUVPosition = uvPosition;
         }
     `;
     
@@ -505,6 +569,9 @@ function setupShaders() {
         // eye location
         uniform vec3 uEyePosition; // the eye's position in world
         
+        //uniform sampler
+        uniform sampler2D uSampler;
+
         // light properties
         uniform vec3 uLightAmbient; // the light's ambient color
         uniform vec3 uLightDiffuse; // the light's diffuse color
@@ -520,7 +587,8 @@ function setupShaders() {
         // geometry properties
         varying vec3 vWorldPos; // world xyz of fragment
         varying vec3 vVertexNormal; // normal of fragment
-            
+        varying vec2 varyingUVPosition; //varying UV position
+
         void main(void) {
         
             // ambient term
@@ -540,7 +608,9 @@ function setupShaders() {
             
             // combine to output color
             vec3 colorOut = ambient + diffuse + specular; // no specular yet
-            gl_FragColor = vec4(colorOut, 1.0); 
+            //gl_FragColor = vec4(colorOut, 1.0); 
+
+            gl_FragColor = texture2D(uSampler, vec2(varyingUVPosition.s, varyingUVPosition.t));
         }
     `;
     
@@ -576,6 +646,10 @@ function setupShaders() {
                 vNormAttribLoc = gl.getAttribLocation(shaderProgram, "aVertexNormal"); // ptr to vertex normal attrib
                 gl.enableVertexAttribArray(vNormAttribLoc); // connect attrib to array
                 
+                //locate and enable texture uv attributes
+                uvTextureLoc = gl.getAttribLocation(shaderProgram, "uvPosition"); //ptr to UV pos attrib
+                gl.enableVertexAttribArray(uvTextureLoc); //connect attrib to array
+
                 // locate vertex uniforms
                 mMatrixULoc = gl.getUniformLocation(shaderProgram, "umMatrix"); // ptr to mmat
                 pvmMatrixULoc = gl.getUniformLocation(shaderProgram, "upvmMatrix"); // ptr to pvmmat
@@ -591,6 +665,8 @@ function setupShaders() {
                 specularULoc = gl.getUniformLocation(shaderProgram, "uSpecular"); // ptr to specular
                 shininessULoc = gl.getUniformLocation(shaderProgram, "uShininess"); // ptr to shininess
                 
+                samplerUniform = gl.getUniformLocation(shaderProgram, "uSampler");
+
                 // pass global constants into fragment uniforms
                 gl.uniform3fv(eyePositionULoc,Eye); // pass in the eye's position
                 gl.uniform3fv(lightAmbientULoc,lightAmbient); // pass in the light's ambient emission
@@ -671,12 +747,21 @@ function renderModels() {
         gl.uniform3fv(diffuseULoc,currSet.material.diffuse); // pass in the diffuse reflectivity
         gl.uniform3fv(specularULoc,currSet.material.specular); // pass in the specular reflectivity
         gl.uniform1f(shininessULoc,currSet.material.n); // pass in the specular exponent
-        
+
         // vertex buffer: activate and feed into vertex shader
         gl.bindBuffer(gl.ARRAY_BUFFER,vertexBuffers[whichTriSet]); // activate
         gl.vertexAttribPointer(vPosAttribLoc,3,gl.FLOAT,false,0,0); // feed
         gl.bindBuffer(gl.ARRAY_BUFFER,normalBuffers[whichTriSet]); // activate
         gl.vertexAttribPointer(vNormAttribLoc,3,gl.FLOAT,false,0,0); // feed
+
+        //texture buffer: activate and feed into vertex shader
+        gl.bindBuffer(gl.ARRAY_BUFFER, textureBuffers[whichTriSet]); //activate
+        gl.vertexAttribPointer(uvTextureLoc,2,gl.FLOAT,false,0,0); //feed
+
+        gl.activeTexture(gl.TEXTURE0);
+        gl.bindTexture(gl.TEXTURE_2D, myTexture);
+        gl.uniform1i(samplerUniform, 0);
+
 
         // triangle buffer: activate and render
         gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER,triangleBuffers[whichTriSet]); // activate
@@ -723,4 +808,9 @@ function main() {
   setupShaders(); // setup the webGL shaders
   renderModels(); // draw the triangles using webGL
   
+  /** steps to get texture:
+  1. load texture
+  2. write function to handle loaded texture, define filters
+  3. 
+*/
 } // end main

@@ -280,6 +280,21 @@ function loadEllipsoidTexture(textureLocation, ellipsoidSet)
     console.log("ellipsoidTexture:" + ellipsoidTexture);
 
     ellipsoidTexture[ellipsoidSet] = gl.createTexture();
+    
+    // gl.bindTexture(gl.TEXTURE_2D, ellipsoidTexture[ellipsoidSet]);
+
+    // const level = 0;
+    // const internalFormat = gl.RGBA;
+    // const width = 1;
+    // const height = 1;
+    // const border = 0;
+    // const srcFormat = gl.RGBA;
+    // const srcType = gl.UNSIGNED_BYTE;
+    // const pixel = new Uint8Array([0, 0, 255, 255]);  // opaque blue
+    // gl.texImage2D(gl.TEXTURE_2D, level, internalFormat,
+    //             width, height, border, srcFormat, srcType,
+    //             pixel);
+
     ellipsoidTexture[ellipsoidSet].image = new Image();
     ellipsoidTexture[ellipsoidSet].image.crossOrigin = "Anonymous";
     ellipsoidTexture[ellipsoidSet].image.onload = function()
@@ -306,7 +321,7 @@ function loadTriangleTexture(textureLocation, triangleSet)
         handleTexture(triangleTexture[triangleSet]);
     }
     console.log("textureLocation: " + textureLocation);
-    triangleTexture[triangleSet].image.src = "https://ncsucgclass.github.io/prog3/"+textureLocation;
+    triangleTexture[triangleSet].image.src = "https://ncsucgclass.github.io/prog3/" + textureLocation;
     console.log("myTexture.image.src: " + triangleTexture[triangleSet].image.src);
 }
 
@@ -317,20 +332,38 @@ function handleTexture(textureVal)
     gl.bindTexture(gl.TEXTURE_2D, textureVal);
     gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, textureVal.image);
-    gl.generateMipmap(gl.TEXTURE_2D);
-    //whichmag filter to use
+    
+    //max filter
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
 
+    //min filter
+    if (isPowerOf2(textureVal.image.width) && isPowerOf2(textureVal.image.height)) {
+       gl.generateMipmap(gl.TEXTURE_2D);
+       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
+    } else {
+       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    }
+
+    //whichmag filter to use
+
     //which min filter to use
-    //gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
-    //gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
+    //gl.generateMipmap(false);
+    //gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+   // gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
+    
 
     gl.bindTexture(gl.TEXTURE_2D, null);
 }
 
-Number.prototype.map = function (in_min, in_max, out_min, out_max) {
-  return (this - in_min) * (out_max - out_min) / (in_max - in_min) + out_min;
+function isPowerOf2(value) {
+  return (value & (value - 1)) == 0;
 }
+
+// Number.prototype.map = function (in_min, in_max, out_min, out_max) {
+//   return (this - in_min) * (out_max - out_min) / (in_max - in_min) + out_min;
+// }
 
 // read models in, load them into webgl buffers
 function loadModels() {
@@ -351,9 +384,10 @@ function loadModels() {
                 
                 // make vertices
                 var ellipsoidVertices = [0,-1,0]; // vertices to return, init to south pole
-                var ellipsoidUVs = [0.5,0];
+                var ellipsoidUVs = [0,0];
                 //ellipsoidUVs.push(0,0);
 
+                //error in generating vu coordinates
                 var angleIncr = (Math.PI+Math.PI) / numLongSteps; // angular increment 
                 var latLimitAngle = angleIncr * (Math.floor(numLongSteps/4)-1); // start/end lat angle
                 var latRadius, latY; // radius and Y at current latitude
@@ -363,13 +397,15 @@ function loadModels() {
                 for (var latAngle=-latLimitAngle; latAngle<=latLimitAngle; latAngle+=angleIncr) {
                     latRadius = Math.cos(latAngle); // radius of current latitude
                     latY = Math.sin(latAngle); // height at current latitude
-                    latV = latAngle*INVPI + 0.5;
+                    latV = latAngle/Math.PI + 0.6;
                     for (var longAngle=0; longAngle<2*Math.PI; longAngle+=angleIncr){// for each long
                         ellipsoidVertices.push(latRadius*Math.sin(longAngle),latY,latRadius*Math.cos(longAngle));
                         //var u=(latAngle/latLimitAngle).map(-1, 1, 0, 1);
                         //var v=longAngle/(2*Math.PI);
                         //ellipsoidUVs.push(u,v);
-                        ellipsoidUVs.push(longAngle*INV2PI, latV);
+                        val1 = 1/(Math.PI+Math.PI)
+                        //ellipsoidUVs.push(longAngle*val1+Math.PI, latV);
+                        ellipsoidUVs.push(longAngle*val1, latV);
                     }
                 } // end for each latitude
                 ellipsoidVertices.push(0,1,0); // add north pole
@@ -383,8 +419,19 @@ function loadModels() {
                             return(val*currEllipsoid.b+currEllipsoid.y);
                         case 2: // z
                             return(val*currEllipsoid.c+currEllipsoid.z);
-                    } // end switch
-                }); 
+                  9  } // end switch
+                });
+
+                // ellipsoidUVs = ellipsoidUVs.map(function(val,idx) { // position and scale ellipsoid
+                //     switch (idx % 3) {
+                //         case 0: // x
+                //             return(val*currEllipsoid.a+currEllipsoid.x);
+                //         case 1: // y
+                //             return(val*currEllipsoid.b+currEllipsoid.y);
+                //         case 2: // z
+                //             return(val*currEllipsoid.c+currEllipsoid.z);
+                //     } // end switch
+                // }); 
 
                 //doubt 111
                 /*
@@ -426,7 +473,7 @@ function loadModels() {
                                         ellipsoidVertices.length/3-numLongSteps-1); // longitude wrap
             } // end if good number longitude steps
 
-            console.log("***********ellipsoidUVs**********" + ellipsoidUVs);
+           // console.log("***********ellipsoidUVs**********" + ellipsoidUVs);
             return({vertices:ellipsoidVertices, normals:ellipsoidNormals, triangles:ellipsoidTriangles, uvs:ellipsoidUVs});
         } // end try
         

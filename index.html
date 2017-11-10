@@ -7,11 +7,22 @@
     <link type="text/css" rel="stylesheet" href="rasterize.css">
 
     <script type="text/javascript" src="gl-matrix.js"></script>
-    <script type="text/javascript" src="rasterize.js"></script>
+    <script type="text/javascript" src="rasterize2.js"></script>
   </head>
 
   <body onload="main();">
     <canvas id="myImageCanvas" width="512" height="512"></canvas>
     <canvas id="myWebGLCanvas" width="512" height="512"></canvas>
+    <p>
+    <br>
+    <span id="light">
+    <label ><b>Use Lighting</b></label>
+    <input type="checkbox" name="use_light" value="0" id="use_light">
+    <br>
+    <input type="button" id="Submitbtn" name="Submit" value="Submit" onclick="main();">
+    <br>
+    </span>
+    <br>
+    </p>
   </body>
 </html>

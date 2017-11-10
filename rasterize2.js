@@ -36,6 +36,7 @@ var ambientULoc; // where to put ambient reflecivity for fragment shader
 var diffuseULoc; // where to put diffuse reflecivity for fragment shader
 var specularULoc; // where to put specular reflecivity for fragment shader
 var shininessULoc; // where to put specular exponent for fragment shader
+var alphaULoc; //location of alpha
 
 /* interaction variables */
 var Eye = vec3.clone(defaultEye); // eye position in world space
@@ -265,6 +266,11 @@ function setupWebGL() {
          //gl.clearColor(0.0, 0.0, 0.0, 1.0); // use black when we clear the frame buffer
          gl.clearDepth(1.0); // use max when we clear the depth buffer
          gl.enable(gl.DEPTH_TEST); // use hidden surface removal (with zbuffering)
+         gl.depthFunc(gl.LESS);
+         
+         // gl.blendFunc(gl.SRC_ALPHA, gl.ONE);
+         // gl.enable(gl.BLEND);
+         // gl.disable(gl.DEPTH_TEST);
        }
      } // end try
      
@@ -397,7 +403,7 @@ function loadModels() {
                 for (var latAngle=-latLimitAngle; latAngle<=latLimitAngle; latAngle+=angleIncr) {
                     latRadius = Math.cos(latAngle); // radius of current latitude
                     latY = Math.sin(latAngle); // height at current latitude
-                    latV = latAngle/Math.PI + 0.6;
+                    latV = latAngle/Math.PI + 0.5;
                     for (var longAngle=0; longAngle<2*Math.PI; longAngle+=angleIncr){// for each long
                         ellipsoidVertices.push(latRadius*Math.sin(longAngle),latY,latRadius*Math.cos(longAngle));
                         //var u=(latAngle/latLimitAngle).map(-1, 1, 0, 1);
@@ -405,7 +411,8 @@ function loadModels() {
                         //ellipsoidUVs.push(u,v);
                         val1 = 1/(Math.PI+Math.PI)
                         //ellipsoidUVs.push(longAngle*val1+Math.PI, latV);
-                        ellipsoidUVs.push(longAngle*val1, latV);
+                        //ellipsoidUVs.push(longAngle*INV2PI,latV);
+                        ellipsoidUVs.push(longAngle*val1+0.2, latV);
                     }
                 } // end for each latitude
                 ellipsoidVertices.push(0,1,0); // add north pole
@@ -679,6 +686,7 @@ function setupShaders() {
         uniform vec3 uDiffuse; // the diffuse reflectivity
         uniform vec3 uSpecular; // the specular reflectivity
         uniform float uShininess; // the specular exponent
+        uniform float uAlphaVal; //alpha value 
         
         // geometry properties
         varying vec3 vWorldPos; // world xyz of fragment
@@ -705,8 +713,10 @@ function setupShaders() {
             // combine to output color
             vec3 colorOut = ambient + diffuse + specular; // no specular yet
             //gl_FragColor = vec4(colorOut, 1.0);
-            gl_FragColor = texture2D(uSampler, vec2(uvVaryingTexturePosition.s, uvVaryingTexturePosition.t));
- 
+            highp vec4 texelColor = texture2D(uSampler, uvVaryingTexturePosition);
+            //gl_FragColor = vec4(texelColor.rgb * colorOut, uAlphaVal);
+            //gl_FragColor = texelColor;
+            gl_FragColor = vec4(colorOut, uAlphaVal)*texture2D(uSampler, vec2(uvVaryingTexturePosition.s, uvVaryingTexturePosition.t));
         }
     `;
     
@@ -760,7 +770,8 @@ function setupShaders() {
                 diffuseULoc = gl.getUniformLocation(shaderProgram, "uDiffuse"); // ptr to diffuse
                 specularULoc = gl.getUniformLocation(shaderProgram, "uSpecular"); // ptr to specular
                 shininessULoc = gl.getUniformLocation(shaderProgram, "uShininess"); // ptr to shininess
-                
+                alphaULoc = gl.getUniformLocation(shaderProgram, "uAlphaVal");
+
                 samplerUniform = gl.getUniformLocation(shaderProgram, "uSampler");
 
                 // pass global constants into fragment uniforms
@@ -832,6 +843,7 @@ function renderModels() {
     for (var whichTriSet=0; whichTriSet<numTriangleSets; whichTriSet++) {
         currSet = inputTriangles[whichTriSet];
         
+
         // make model transform, add to view project
         makeModelTransform(currSet);
         mat4.multiply(pvmMatrix,pvMatrix,mMatrix); // project * view * model
@@ -843,7 +855,19 @@ function renderModels() {
         gl.uniform3fv(diffuseULoc,currSet.material.diffuse); // pass in the diffuse reflectivity
         gl.uniform3fv(specularULoc,currSet.material.specular); // pass in the specular reflectivity
         gl.uniform1f(shininessULoc,currSet.material.n); // pass in the specular exponent
-        
+        gl.uniform1f(alphaULoc,currSet.material.alpha); //alpha location
+
+        if(currSet.material.alpha<1.0)
+        {
+        	gl.blendFunc(gl.SRC_ALPHA, gl.ONE);
+         	gl.enable(gl.BLEND);
+         	gl.disable(gl.DEPTH_TEST);
+         }
+         else{
+         	gl.disable(gl.BLEND);
+         	gl.enable(gl.DEPTH_TEST);
+         }
+
         // vertex buffer: activate and feed into vertex shader
         gl.bindBuffer(gl.ARRAY_BUFFER,vertexBuffers[whichTriSet]); // activate
         gl.vertexAttribPointer(vPosAttribLoc,3,gl.FLOAT,false,0,0); // feed
@@ -883,6 +907,20 @@ function renderModels() {
         gl.uniform3fv(diffuseULoc,ellipsoid.diffuse); // pass in the diffuse reflectivity
         gl.uniform3fv(specularULoc,ellipsoid.specular); // pass in the specular reflectivity
         gl.uniform1f(shininessULoc,ellipsoid.n); // pass in the specular exponent
+        gl.uniform1f(alphaULoc,ellipsoid.alpha);
+
+        if(ellipsoid.alpha<1.0 || ellipsoid.alpha<1)
+        {
+        	console.log("ellipsoid alpha less than 1: " + ellipsoid.alpha);
+        	gl.blendFunc(gl.SRC_ALPHA, gl.ONE);
+         	gl.enable(gl.BLEND);
+         	gl.disable(gl.DEPTH_TEST);
+         }
+         else{
+         	console.log("ellipsoid alpha greater than 1: " + ellipsoid.alpha);
+         	gl.disable(gl.BLEND);
+         	gl.enable(gl.DEPTH_TEST);
+         }
 
         gl.bindBuffer(gl.ARRAY_BUFFER,vertexBuffers[numTriangleSets+whichEllipsoid]); // activate vertex buffer
         gl.vertexAttribPointer(vPosAttribLoc,3,gl.FLOAT,false,0,0); // feed vertex buffer to shader

@@ -439,7 +439,7 @@ function loadModels() {
                         val1 = 1/(Math.PI+Math.PI)
                         //ellipsoidUVs.push(longAngle*val1+Math.PI, latV);
                         //ellipsoidUVs.push(longAngle*INV2PI,latV);
-                        ellipsoidUVs.push(longAngle*val1+0.1, latV);
+                        ellipsoidUVs.push(longAngle*val1+0.17, latV);
                     }
                 } // end for each latitude
                 ellipsoidVertices.push(0,1,0); // add north pole
@@ -516,24 +516,7 @@ function loadModels() {
         } // end catch
     } // end make ellipsoid
     
-    //inputTriangles = getJSONFile(INPUT_TRIANGLES_URL,"triangles"); // read in the triangle data
-    inputTriangles = [
-  {
-    "material": {"ambient": [0.1,0.1,0.1], "diffuse": [0.6,0.4,0.4], "specular": [0.3,0.3,0.3], "n": 11, "alpha": 0.9, "texture": "abe.png"}, 
-    "vertices": [[0.1, 0.3, 0.75],[0.25, 0.6, 0.75],[0.4, 0.3, 0.75]],
-    "normals": [[0, 0, -1],[0, 0,-1],[0, 0,-1]],
-    "uvs": [[0,0], [0.5,1], [1,0]],
-    "triangles": [[0,1,2]]
-  },
-  {
-    "material": {"ambient": [0.1,0.1,0.1], "diffuse": [0.6,0.6,0.4], "specular": [0.3,0.3,0.3], "n":17, "alpha": 0.6, "texture": "tree.png"}, 
-    "vertices": [[0.3, 0.1, 0.65],[0.3, 0.4, 0.65],[0.6,0.4,0.65],[0.6,0.1,0.65]],
-    "normals": [[0, 0, -1],[0, 0, -1],[0, 0, -1],[0, 0, -1]],
-    "uvs": [[0,0], [0,1], [1,1], [1,0]],
-    "triangles": [[0,1,2],[2,3,0]]
-  }
-];
-
+    inputTriangles = getJSONFile(INPUT_TRIANGLES_URL,"triangles"); // read in the triangle data
     try {
         if (inputTriangles == String.null)
             throw "Unable to load triangles file!";
@@ -562,7 +545,7 @@ function loadModels() {
                 // set up the vertex and normal arrays, define model center and axes
                 inputTriangles[whichSet].glVertices = []; // flat coord list for webgl
                 inputTriangles[whichSet].glNormals = []; // flat normal list for webgl
-                inputTriangles[whichSet].glUVs = []; //UVs for webgl
+                inputTriangles[whichSet].glUVs = []; //UVs for webgls
 
                 loadTriangleTexture(inputTriangles[whichSet].material.texture, whichSet);
               //  console.log("inputTriangles[whichSet].material.texture: ********" + inputTriangles[whichSet].material.texture);
@@ -584,6 +567,11 @@ function loadModels() {
                 } // end for vertices in set
                 vec3.scale(inputTriangles[whichSet].center,inputTriangles[whichSet].center,1/numVerts); // avg ctr sum
 
+                // console.log("************** center of triangle is: " + inputTriangles[whichSet].center[0]);
+                // console.log("************** center of triangle is: " + inputTriangles[whichSet].center[1]);
+                // console.log("************** center of triangle is: " + inputTriangles[whichSet].center[2]);
+
+
                 // send the vertex coords and normals to webGL
                 vertexBuffers[whichSet] = gl.createBuffer(); // init empty webgl set vertex coord buffer
                 gl.bindBuffer(gl.ARRAY_BUFFER,vertexBuffers[whichSet]); // activate that buffer
@@ -600,6 +588,7 @@ function loadModels() {
 
                 // set up the triangle index array, adjusting indices across sets
                 inputTriangles[whichSet].glTriangles = []; // flat index list for webgl
+
                 triSetSizes[whichSet] = inputTriangles[whichSet].triangles.length; // number of tris in this set
                 for (whichSetTri=0; whichSetTri<triSetSizes[whichSet]; whichSetTri++) {
                     triToAdd = inputTriangles[whichSet].triangles[whichSetTri]; // get tri to add
@@ -616,6 +605,8 @@ function loadModels() {
                 triangleSet.model = "triangle";
                 triangleSet.set_number = whichSet;
                 triangleSet.detail = inputTriangles[whichSet];
+                triangleSet.center = inputTriangles[whichSet].center;
+                triangleSet.texture = inputTriangles[whichSet].material.texture;
                 if(inputTriangles[whichSet].material.alpha==1 || inputTriangles[whichSet].material.alpha==1.0)
                 {
                     //triangle is opaque
@@ -629,13 +620,7 @@ function loadModels() {
                 }
             } // end for each triangle set 
         
-            //inputEllipsoids = getJSONFile(INPUT_ELLIPSOIDS_URL,"ellipsoids"); // read in the ellipsoids
-
-            inputEllipsoids = [
-{"x": 0.3, "y": 0.8, "z": 0.55, "a":0.2, "b":0.15, "c":0.1, "ambient": [0.1,0.1,0.1], "diffuse": [0.0,0.0,0.6], "specular": [0.3,0.3,0.3], "n":5, "alpha": 1, "texture": "earth.png"},
-{"x": 0.7, "y": 0.8, "z": 0.60, "a":0.2, "b":0.15, "c":0.1, "ambient": [0.1,0.1,0.1], "diffuse": [0.6,0.0,0.6], "specular": [0.3,0.3,0.3], "n":7, "alpha": 1, "texture": "billie.jpg"},
-{"x": 0.6, "y": 0.6, "z": 0.45, "a":0.25, "b":0.18, "c":0.1, "ambient": [0.1,0.1,0.1], "diffuse": [0.6,0.6,0.0], "specular": [0.3,0.3,0.3], "n":9, "alpha": 0.6, "texture": "stars.jpg"}
-];
+            inputEllipsoids = getJSONFile(INPUT_ELLIPSOIDS_URL,"ellipsoids"); // read in the ellipsoids
 
             if (inputEllipsoids == String.null)
                 throw "Unable to load ellipsoids file!";
@@ -693,6 +678,8 @@ function loadModels() {
                     ellipsoidSet.model = "ellipsoid";
                     ellipsoidSet.set_number = whichEllipsoid;
                     ellipsoidSet.detail = ellipsoid;
+                    ellipsoidSet.center = ellipsoid.center;
+                    ellipsoidSet.texture = ellipsoid.texture;
                     if(ellipsoid.alpha==1 || ellipsoid.alpha==1.0)
                     {
                         //ellipoid is opaque
@@ -708,6 +695,24 @@ function loadModels() {
                 viewDelta = vec3.length(vec3.subtract(temp,maxCorner,minCorner)) / 100; // set global
             } // end if ellipsoid file loaded
         } // end if triangle file loaded
+
+        // console.log("trans buffer length: " + transBuffer.length);
+
+        for(var t1=0; t1<transBuffer.length; t1++)
+        {
+            console.log("model: "+ transBuffer[t1].model + "texture:" +transBuffer[t1].texture + "  center: " + transBuffer[t1].center[2]);
+        }
+        transBuffer.sort(function(a, b) {
+            console.log("a's z center: " + a.center[2]);
+            console.log("b's z center: " + b.center[2]);
+            return parseFloat(a.center[2]) - parseFloat(b.center[2]);
+        });
+        for(var t1=0; t1<transBuffer.length; t1++)
+        {
+            console.log("model: "+ transBuffer[t1].model + "texture:" +transBuffer[t1].texture);
+        }
+
+
     } // end try 
     
     catch(e) {
@@ -1031,12 +1036,13 @@ function renderModels() {
     }
 
     //render transparent objects
-    for(var transSet =0; transSet<transBuffer.length; transSet++)
+    for(var transSet =transBuffer.length-1; transSet>=0; transSet--)
     {
         //adding this is increasing light exponentially doubt 111111111 ???
           gl.depthMask(false);
           gl.disable(gl.DEPTH_TEST);
-          gl.blendFunc(gl.SRC_ALPHA, gl.ONE);
+          gl.blendFunc(gl.SRC_ALPHA, gl.SRC_ALPHA);
+          //gl.blendFunc(gl.SRC_ALPHA_SATURATE, gl.ONE);
           gl.enable(gl.BLEND);
 
         if(transBuffer[transSet].model=="triangle")

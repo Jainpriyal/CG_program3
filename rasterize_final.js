@@ -277,7 +277,7 @@ function setupWebGL() {
    //  use_light = document.getElementById("use_light").checked;
      use_light =0;
 
-     console.log("uselight: " + use_light);
+    // console.log("uselight: " + use_light);
 
      gl = webGLCanvas.getContext("webgl"); // get a webgl object from it
      try {
@@ -289,7 +289,7 @@ function setupWebGL() {
          gl.enable(gl.DEPTH_TEST); // use hidden surface removal (with zbuffering)
          gl.depthFunc(gl.LESS);
          
-         // gl.blendFunc(gl.SRC_ALPHA, gl.ONE);
+         gl.blendFunc(gl.SRC_ALPHA, gl.ONE);
          // gl.enable(gl.BLEND);
          // gl.disable(gl.DEPTH_TEST);
        }
@@ -561,6 +561,10 @@ function loadModels() {
                 triangleSet.set_number = whichSet;
                 triangleSet.detail = inputTriangles[whichSet];
                 triangleSet.center = inputTriangles[whichSet].center;
+
+                triangleSet.center_view = vec3.create();
+                triangleSet.center_view = vec3.subtract(triangleSet.center_view, Eye, inputTriangles[whichSet].center);
+                
                 triangleSet.texture = inputTriangles[whichSet].material.texture;
                 if(inputTriangles[whichSet].material.alpha==1 || inputTriangles[whichSet].material.alpha==1.0)
                 {
@@ -633,6 +637,8 @@ function loadModels() {
                     ellipsoidSet.set_number = whichEllipsoid;
                     ellipsoidSet.detail = ellipsoid;
                     ellipsoidSet.center = ellipsoid.center;
+                    ellipsoidSet.center_view = vec3.create();
+                    ellipsoidSet.center_view = vec3.subtract(ellipsoidSet.center_view, Eye, ellipsoid.center);
                     ellipsoidSet.texture = ellipsoid.texture;
                     if(ellipsoid.alpha==1 || ellipsoid.alpha==1.0)
                     {
@@ -652,19 +658,19 @@ function loadModels() {
 
         // console.log("trans buffer length: " + transBuffer.length);
 
-        for(var t1=0; t1<transBuffer.length; t1++)
-        {
-            console.log("model: "+ transBuffer[t1].model + "texture:" +transBuffer[t1].texture + "  center: " + transBuffer[t1].center[2]);
-        }
-        transBuffer.sort(function(a, b) {
-            console.log("a's z center: " + a.center[2]);
-            console.log("b's z center: " + b.center[2]);
-            return parseFloat(a.center[2]) - parseFloat(b.center[2]);
-        });
-        for(var t1=0; t1<transBuffer.length; t1++)
-        {
-            console.log("model: "+ transBuffer[t1].model + "texture:" +transBuffer[t1].texture);
-        }
+        // for(var t1=0; t1<transBuffer.length; t1++)
+        // {
+        //     console.log("model: "+ transBuffer[t1].model + "texture:" +transBuffer[t1].texture + "  center: " + transBuffer[t1].center_view[2]);
+        // }
+        // transBuffer.sort(function(a, b) {
+        //     console.log("a.center[2]: " + a.center[2]);
+        //     console.log("b.center[2]:" + b.center[2]);
+        //     return parseFloat(b.center[2]) - parseFloat(a.center[2]);
+        // });
+        // for(var t1=0; t1<transBuffer.length; t1++)
+        // {
+        //     console.log("model: "+ transBuffer[t1].model + "texture:" +transBuffer[t1].texture + "  center: " + transBuffer[t1].center_view[2]);
+        // }
 
 
     } // end try 
@@ -921,6 +927,8 @@ function renderModels() {
     //first render opaque objects
     for(var opaqueSet =0; opaqueSet<opaqueBuffer.length; opaqueSet++)
     {
+        gl.depthMask(true);
+
         if(opaqueBuffer[opaqueSet].model=="triangle")
         {
             //render opaque triangles
@@ -1009,14 +1017,36 @@ function renderModels() {
         }
     }
 
+        // for(var t1=0; t1<transBuffer.length; t1++)
+        // {
+        //     console.log("model: "+ transBuffer[t1].model + "texture:" +transBuffer[t1].texture + "  center: " + transBuffer[t1].center_view[2]);
+        // }
+        transBuffer.sort(function(a, b) {
+            //model matrix world position
+            //distance from eye
+            //sort from distance
+            console.log("**************a center: " + a.center);
+            console.log("************b center: " + b.center);
+            return parseFloat(a.detail.translation[2] + a.center[2]) - parseFloat(a.detail.translation[2] + b.center[2]);
+        });
+        // for(var t1=0; t1<transBuffer.length; t1++)
+        // {
+        //     console.log("model: "+ transBuffer[t1].model + "texture:" +transBuffer[t1].texture + "  center: " + transBuffer[t1].center_view[2]);
+        // }
+
+        console.log("translation: " + transBuffer[0].detail.translation[2]);
+
     //render transparent objects
     for(var transSet =transBuffer.length-1; transSet>=0; transSet--)
     {
            gl.depthMask(false);
-           gl.disable(gl.DEPTH_TEST);
-           gl.blendFunc(gl.SRC_ALPHA, gl.ONE);
+           //gl.disable(gl.DEPTH_TEST);
+            gl.blendFunc(gl.SRC_ALPHA, gl.ONE);
+           //gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
            gl.enable(gl.BLEND);
           //src is alpha, destination one munius alpha
+
+        //  console.log("render order: ");
 
         if(transBuffer[transSet].model=="triangle")
         {
@@ -1036,6 +1066,7 @@ function renderModels() {
 
             gl.uniform1f(useTextureLoc, currTransSet.detail.material.texture); //use texture
 
+        //    console.log("  " + transSet + " ." + currTransSet.detail.material.texture);
             // vertex buffer: activate and feed into vertex shader
             gl.bindBuffer(gl.ARRAY_BUFFER,vertexBuffers[currTransSet.set_number]); // activate
             gl.vertexAttribPointer(vPosAttribLoc,3,gl.FLOAT,false,0,0); // feed
@@ -1078,6 +1109,8 @@ function renderModels() {
             gl.uniform1f(shininessULoc,transEllipsoid.detail.n); // pass in the specular exponent
             gl.uniform1f(alphaULoc,transEllipsoid.detail.alpha);
             gl.uniform1f(useTextureLoc, transEllipsoid.detail.texture); //use texture
+
+        //    console.log("  " + transSet + " ." + transEllipsoid.detail.texture);
 
             gl.bindBuffer(gl.ARRAY_BUFFER,vertexBuffers[numTriangleSets+transEllipsoid.set_number]); // activate vertex buffer
             gl.vertexAttribPointer(vPosAttribLoc,3,gl.FLOAT,false,0,0); // feed vertex buffer to shader

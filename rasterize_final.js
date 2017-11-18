@@ -411,9 +411,7 @@ function loadModels() {
                         // var u = 1-(longAngle/(2*Math.PI));
                         // var v = (Math.PI/2 + latAngle)/Math.PI;
 
-                        //ellipsoidUVs.push(longAngle*val1+Math.PI, latV);
                         ellipsoidUVs.push(longAngle*val1,latV);
-                        //ellipsoidUVs.push(u,v);
                         //ellipsoidUVs.push(longAngle*val1+0.17, latV);
                     }
                 } // end for each latitude
@@ -477,6 +475,7 @@ function loadModels() {
     } // end make ellipsoid
     
     inputTriangles = getJSONFile(INPUT_TRIANGLES_URL,"triangles"); // read in the triangle data
+
     try {
         if (inputTriangles == String.null)
             throw "Unable to load triangles file!";
@@ -509,7 +508,6 @@ function loadModels() {
 
                 loadTriangleTexture(inputTriangles[whichSet].material.texture, whichSet);
               //  console.log("inputTriangles[whichSet].material.texture: ********" + inputTriangles[whichSet].material.texture);
-
 
                 var numVerts = inputTriangles[whichSet].vertices.length; // num vertices in tri set
                 for (whichSetVert=0; whichSetVert<numVerts; whichSetVert++) { // verts in set
@@ -561,6 +559,9 @@ function loadModels() {
                 triangleSet.set_number = whichSet;
                 triangleSet.detail = inputTriangles[whichSet];
                 triangleSet.center = inputTriangles[whichSet].center;
+                triangleSet.modelMatrix = mat4.create();
+
+                mat4.identity(triangleSet.modelMatrix);
 
                 triangleSet.center_view = vec3.create();
                 triangleSet.center_view = vec3.subtract(triangleSet.center_view, Eye, inputTriangles[whichSet].center);
@@ -631,7 +632,7 @@ function loadModels() {
                     gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, triangleBuffers[triangleBuffers.length-1]); // activate that buffer
                     gl.bufferData(gl.ELEMENT_ARRAY_BUFFER,new Uint16Array(ellipsoidModel.triangles),gl.STATIC_DRAW); // data in
 
-                                    //store triangle in its corresponding buffer
+                    //store triangle in its corresponding buffer
                     var ellipsoidSet = {};
                     ellipsoidSet.model = "ellipsoid";
                     ellipsoidSet.set_number = whichEllipsoid;
@@ -640,6 +641,10 @@ function loadModels() {
                     ellipsoidSet.center_view = vec3.create();
                     ellipsoidSet.center_view = vec3.subtract(ellipsoidSet.center_view, Eye, ellipsoid.center);
                     ellipsoidSet.texture = ellipsoid.texture;
+                    ellipsoidSet.modelMatrix = mat4.create();
+
+                    mat4.identity(ellipsoidSet.modelMatrix);
+
                     if(ellipsoid.alpha==1 || ellipsoid.alpha==1.0)
                     {
                         //ellipoid is opaque
@@ -655,23 +660,6 @@ function loadModels() {
                 viewDelta = vec3.length(vec3.subtract(temp,maxCorner,minCorner)) / 100; // set global
             } // end if ellipsoid file loaded
         } // end if triangle file loaded
-
-        // console.log("trans buffer length: " + transBuffer.length);
-
-        // for(var t1=0; t1<transBuffer.length; t1++)
-        // {
-        //     console.log("model: "+ transBuffer[t1].model + "texture:" +transBuffer[t1].texture + "  center: " + transBuffer[t1].center_view[2]);
-        // }
-        // transBuffer.sort(function(a, b) {
-        //     console.log("a.center[2]: " + a.center[2]);
-        //     console.log("b.center[2]:" + b.center[2]);
-        //     return parseFloat(b.center[2]) - parseFloat(a.center[2]);
-        // });
-        // for(var t1=0; t1<transBuffer.length; t1++)
-        // {
-        //     console.log("model: "+ transBuffer[t1].model + "texture:" +transBuffer[t1].texture + "  center: " + transBuffer[t1].center_view[2]);
-        // }
-
 
     } // end try 
     
@@ -880,6 +868,8 @@ function renderModels() {
     
     // construct the model transform matrix, based on model state
     function makeModelTransform(currModel) {
+            var mMatrix = mat4.create(); // model matrix
+
         var zAxis = vec3.create(), sumRotation = mat4.create(), temp = mat4.create(), negCtr = vec3.create();
 
         // move the model to the origin
@@ -903,13 +893,14 @@ function renderModels() {
 
         // translate model to current interactive orientation
         mat4.multiply(mMatrix,mat4.fromTranslation(temp,currModel.translation),mMatrix); // T(pos)*T(ctr)*R(ax)*S(1.2)*T(-ctr)
+
+        return mMatrix;
         
     } // end make model transform
     
     // var hMatrix = mat4.create(); // handedness matrix
     var pMatrix = mat4.create(); // projection matrix
     var vMatrix = mat4.create(); // view matrix
-    var mMatrix = mat4.create(); // model matrix
     var pvMatrix = mat4.create(); // hand * proj * view matrices
     var pvmMatrix = mat4.create(); // hand * proj * view * model matrices
     
@@ -934,9 +925,9 @@ function renderModels() {
             //render opaque triangles
             var currOpaqueSet = opaqueBuffer[opaqueSet];
             // make model transform, add to view project
-            makeModelTransform(currOpaqueSet.detail);
-            mat4.multiply(pvmMatrix,pvMatrix,mMatrix); // project * view * model
-            gl.uniformMatrix4fv(mMatrixULoc, false, mMatrix); // pass in the m matrix
+            var opaqueModelMatrix = makeModelTransform(currOpaqueSet.detail);
+            mat4.multiply(pvmMatrix,pvMatrix,opaqueModelMatrix); // project * view * model
+            gl.uniformMatrix4fv(mMatrixULoc, false, opaqueModelMatrix); // pass in the m matrix
             gl.uniformMatrix4fv(pvmMatrixULoc, false, pvmMatrix); // pass in the hpvm matrix
         
             // reflectivity: feed to the fragment shader
@@ -973,15 +964,14 @@ function renderModels() {
         else if(opaqueBuffer[opaqueSet].model=="ellipsoid")
         {
             //render opaque ellipsoid
-
-         //   console.log("rendering opaque ellipsoid");
-
             var ellipsoid, instanceTransform = mat4.create(); // the current ellipsoid and material
             ellipsoid = opaqueBuffer[opaqueSet];
             // define model transform, premult with pvmMatrix, feed to vertex shader
-            makeModelTransform(ellipsoid.detail);
-            pvmMatrix = mat4.multiply(pvmMatrix,pvMatrix,mMatrix); // premultiply with pv matrix
-            gl.uniformMatrix4fv(mMatrixULoc, false, mMatrix); // pass in model matrix
+            //makeModelTransform(ellipsoid.detail);
+            var opaqueModelMatrix = makeModelTransform(ellipsoid.detail);
+
+            pvmMatrix = mat4.multiply(pvmMatrix,pvMatrix,opaqueModelMatrix); // premultiply with pv matrix
+            gl.uniformMatrix4fv(mMatrixULoc, false, opaqueModelMatrix); // pass in model matrix
             gl.uniformMatrix4fv(pvmMatrixULoc, false, pvmMatrix); // pass in project view model matrix
 
             // reflectivity: feed to the fragment shader
@@ -1017,28 +1007,57 @@ function renderModels() {
         }
     }
 
-        // for(var t1=0; t1<transBuffer.length; t1++)
-        // {
-        //     console.log("model: "+ transBuffer[t1].model + "texture:" +transBuffer[t1].texture + "  center: " + transBuffer[t1].center_view[2]);
-        // }
+    //calculate model transforms
+    for(var transSet =transBuffer.length-1; transSet>=0; transSet--)
+    {
+        var currTransSet = transBuffer[transSet];
+        // make model transform, add to view project
+        currTransSet.modelMatrix = makeModelTransform(currTransSet.detail);
+    }
+
         transBuffer.sort(function(a, b) {
             //model matrix world position
             //distance from eye
             //sort from distance
-            console.log("**************a center: " + a.center);
-            console.log("************b center: " + b.center);
-            return parseFloat(a.detail.translation[2] + a.center[2]) - parseFloat(a.detail.translation[2] + b.center[2]);
+
+            //world position for model a
+            var center_a = vec4.fromValues(a.center[0],a.center[1],a.center[2],1.0);
+            vec4.transformMat4(center_a, center_a, a.modelMatrix);
+            vec4.scale(center_a, center_a, 1/center_a[3]);
+
+            //world position for model b
+            var center_b = vec4.fromValues(b.center[0], b.center[1], b.center[2], 1.0);
+            vec4.transformMat4(center_b, center_b, b.modelMatrix);
+            vec4.scale(center_b, center_b, 1/center_b[3]);
+
+            //distance of a from eye
+            var d1 = vec3.squaredDistance(Eye, vec3.fromValues(center_a[0], center_a[1],center_a[2]));
+           //console.log("********** d1 **********" + d1 + "center_a[2]: " + center_a[2]);
+
+           //console.log("modelMatrix b: " + b.modelMatrix);
+
+            //distance of b from eye
+            var d2 = vec3.squaredDistance(Eye, vec3.fromValues(center_b[0], center_b[1], center_b[2]));
+            //calculate distance from eye
+            return(parseFloat(Eye[2]-center_a[2])-parseFloat(Eye[2]-center_b[2]));
+            //return(parseFloat(center_a[2])-parseFloat(center_b[2]));
+
+            //return parseFloat(d1) - parseFloat(d2);
         });
+
+        // console.log("----------after sorting --------- ");
         // for(var t1=0; t1<transBuffer.length; t1++)
         // {
-        //     console.log("model: "+ transBuffer[t1].model + "texture:" +transBuffer[t1].texture + "  center: " + transBuffer[t1].center_view[2]);
+        //     console.log( "model: "+ transBuffer[t1].model + "texture:" +transBuffer[t1].texture);
         // }
-
-        console.log("translation: " + transBuffer[0].detail.translation[2]);
+        // console.log("-----------after sorting ----------- ");
+        //console.log("translation: " + transBuffer[0].detail.translation[2]);
 
     //render transparent objects
     for(var transSet =transBuffer.length-1; transSet>=0; transSet--)
+    //for(var transSet =0; transSet<transBuffer.length; transSet++)
     {
+        //    console.log("************ inside render triangle for loop");
            gl.depthMask(false);
            //gl.disable(gl.DEPTH_TEST);
             gl.blendFunc(gl.SRC_ALPHA, gl.ONE);
@@ -1052,9 +1071,9 @@ function renderModels() {
         {
             var currTransSet = transBuffer[transSet];
             // make model transform, add to view project
-            makeModelTransform(currTransSet.detail);
-            mat4.multiply(pvmMatrix,pvMatrix,mMatrix); // project * view * model
-            gl.uniformMatrix4fv(mMatrixULoc, false, mMatrix); // pass in the m matrix
+           // currTransSet.modelMatrix = makeModelTransform(currTransSet.detail);
+            mat4.multiply(pvmMatrix,pvMatrix,currTransSet.modelMatrix); // project * view * model
+            gl.uniformMatrix4fv(mMatrixULoc, false, currTransSet.modelMatrix); // pass in the m matrix
             gl.uniformMatrix4fv(pvmMatrixULoc, false, pvmMatrix); // pass in the hpvm matrix
         
             // reflectivity: feed to the fragment shader
@@ -1085,7 +1104,6 @@ function renderModels() {
 
             gl.uniform1i(uniToggleTexture, toggle_Texture);
 
-
             // triangle buffer: activate and render
             gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER,triangleBuffers[currTransSet.set_number]); // activate
             gl.drawElements(gl.TRIANGLES,3*triSetSizes[currTransSet.set_number],gl.UNSIGNED_SHORT,0); // render
@@ -1097,9 +1115,9 @@ function renderModels() {
             var transEllipsoid, instanceTransform = mat4.create(); // the current ellipsoid and material
             transEllipsoid = transBuffer[transSet];
             // define model transform, premult with pvmMatrix, feed to vertex shader
-            makeModelTransform(transEllipsoid.detail);
-            pvmMatrix = mat4.multiply(pvmMatrix,pvMatrix,mMatrix); // premultiply with pv matrix
-            gl.uniformMatrix4fv(mMatrixULoc, false, mMatrix); // pass in model matrix
+            //transEllipsoid.modelMatrix =  makeModelTransform(transEllipsoid.detail);
+            pvmMatrix = mat4.multiply(pvmMatrix,pvMatrix,transEllipsoid.modelMatrix); // premultiply with pv matrix
+            gl.uniformMatrix4fv(mMatrixULoc, false, transEllipsoid.modelMatrix); // pass in model matrix
             gl.uniformMatrix4fv(pvmMatrixULoc, false, pvmMatrix); // pass in project view model matrix
 
             // reflectivity: feed to the fragment shader
@@ -1111,7 +1129,6 @@ function renderModels() {
             gl.uniform1f(useTextureLoc, transEllipsoid.detail.texture); //use texture
 
         //    console.log("  " + transSet + " ." + transEllipsoid.detail.texture);
-
             gl.bindBuffer(gl.ARRAY_BUFFER,vertexBuffers[numTriangleSets+transEllipsoid.set_number]); // activate vertex buffer
             gl.vertexAttribPointer(vPosAttribLoc,3,gl.FLOAT,false,0,0); // feed vertex buffer to shader
         
